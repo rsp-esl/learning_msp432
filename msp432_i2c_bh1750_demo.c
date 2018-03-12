@@ -1,13 +1,18 @@
+//////////////////////////////////////////////////////////////////////////////
 #include "msp.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
 #define I2C_SLAVE_ADDR             (0x23) 
+
+#define BH1750_RESET               (0x07)
 #define BH1750_CONT_HIGH_RES_MODE  (0x10)
 
 #define I2C_BRW_VALUE    (SystemCoreClock/100000)
 #define TIMEOUT_CNT      (10000UL)
+
+void delay_msec(uint32_t); 
 
 char sbuf[64];  // used for sprintf()
 
@@ -33,16 +38,15 @@ void init_I2C1(void) {
                     | EUSCI_B_CTLW0_MST 
                     | EUSCI_B_CTLW0_SYNC 
                     | EUSCI_B_CTLW0_SSEL__SMCLK;
-                     
+
     EUSCI_B1->BRW = I2C_BRW_VALUE;  // set clock prescaler 3MHz / 30 = 100kHz
-    
+
     P6->SEL0 |=  0x30;              // configure P6.5 (SCL), P6.4 (SDA) as I2C pins
     P6->SEL1 &= ~0x30;
 
     // finally, enable UCB1 after configuration (SWRST=0)
     EUSCI_B1->CTLW0 &= ~EUSCI_B_CTLW0_SWRST; 
 }
-
 
 int I2C1_write( uint8_t addr, const uint8_t *data, uint32_t len ) {
     uint32_t i, cnt;
@@ -103,7 +107,7 @@ int I2C1_read( uint8_t addr, uint8_t *data, uint32_t len ) {
             return -1; 
         }
     }
-    
+
     EUSCI_B1->I2CSA = addr;                 // set the slave address 
     EUSCI_B1->CTLW0 &= ~EUSCI_B_CTLW0_TR;   // Rx mode (UCTR=0)
     EUSCI_B1->CTLW0 |= EUSCI_B_CTLW0_TXSTT; // send START + address (UCTXSTT=1)
@@ -116,7 +120,7 @@ int I2C1_read( uint8_t addr, uint8_t *data, uint32_t len ) {
             return -2; 
         }
     }
-    
+
     for ( i=0; i < len; i++ ) {
         // wait until the RXBUF has received a complete data byte
         cnt = 0;
@@ -147,6 +151,31 @@ int I2C1_read( uint8_t addr, uint8_t *data, uint32_t len ) {
 }
 
 //-----------------------------------------------------------------------------
+volatile uint32_t ticks = 0;
+
+void delay_msec( uint32_t dly ) {
+    uint32_t ts = ticks;
+    while (1) { 
+        if (ticks - ts >= dly)
+          break;
+    }
+}
+void SysTick_Handler(void) {
+  if ( SysTick->CTRL & (1 << 16) ) {// check and clear the counting flag
+     ticks++;
+  }
+}
+
+void init_systick() {
+  SysTick->LOAD = SystemCoreClock/1000-1;  // set the reload value (=> 1msec tick)
+  SysTick->CTRL = 0b111;          //    ENABLE bit=1: enable SysTick interrupt
+                                  //   TICKINT bit=1: enable interrupt
+                                  // CLKSOURCE bit=1: use the core clock 
+  // call the CMSIS core function to set priority for SysTick interrupt
+  NVIC_SetPriority( SysTick_IRQn, 2 ); // set priority to 2 for SysTick 
+}
+
+//-----------------------------------------------------------------------------
 #define BAUDRATE        (115200)
 #define UART_BRW_VALUE  (SystemCoreClock/BAUDRATE)
 
@@ -170,18 +199,19 @@ void send_str( const char *str ) {
 //-----------------------------------------------------------------------------
 
 void init_BH1750() {
-    int error;
-    uint8_t data[2];
-  
-    data[0] = BH1750_CONT_HIGH_RES_MODE;
-    error = I2C1_write( I2C_SLAVE_ADDR, data, 1 );
+    int error = 0;
+    uint8_t cmd, mode;
+
+    cmd   = BH1750_RESET;
+    error |= I2C1_write( I2C_SLAVE_ADDR, &cmd, 1 );
+    delay_msec(100);
+
+    mode  = BH1750_CONT_HIGH_RES_MODE;
+    error |= I2C1_write( I2C_SLAVE_ADDR, &mode, 1 );
+    delay_msec(200);
 
     if (!error) {
-        uint8_t i, data[2];
         send_str( "BH1750 setup OK...\r\n" );
-        for (i=0; i < 2; i++) { // dummy readings
-           error = I2C1_read( I2C_SLAVE_ADDR, data, 2 );
-        }
     } else {
         sprintf( sbuf, "BH1750 setup FAILED!!! (%d)\r\n", error );
         send_str( sbuf );
@@ -192,7 +222,8 @@ void read_BH1750() {
     int error;
     uint32_t level, lux;
     uint8_t data[2];
-  
+
+    memset( data, 0x00, 2 );
     error = I2C1_read( I2C_SLAVE_ADDR, data, 2 );
     if (error) {
        sprintf( sbuf, "BH1750 Reading: FAILED (%d)\r\n", error );
@@ -209,16 +240,23 @@ void read_BH1750() {
 }
 
 void main(void) {
-    uint32_t i;
-    
+    uint32_t ts;
     WDT_A->CTL = WDT_A_CTL_PW | WDT_A_CTL_HOLD; // stop watchdog timer
-    init_I2C1();    // initialize I2C1 (eUSCI_B1)
-    init_BH1750();  // initialize the BH1750 module
 
-    init_UART0();   // initialize UART0 (eUSCI_A0)
-    send_str( "MSP432 I2C demo...\r\n" );
+    init_systick();        // initialize the SysTick
+    __enable_interrupt();  // enable the global interrupt
+
+    init_UART0();          // initialize UART0 (eUSCI_A0)
+    init_I2C1();           // initialize I2C1 (eUSCI_B1)
+    init_BH1750();         // initialize the BH1750 module
+
+    send_str( "MSP432 I2C BH1750 demo...\r\n" );
+    ts = ticks;
     while (1) {
-     read_BH1750();
-       __delay_cycles( 1000000UL );
+        if ( ticks - ts >= 500 ) {
+          ts += 500;
+          read_BH1750();
+        }
     }
 }
+//////////////////////////////////////////////////////////////////////////////
