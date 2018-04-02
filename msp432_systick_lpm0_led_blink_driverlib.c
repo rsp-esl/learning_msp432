@@ -41,6 +41,5 @@ int main(void) {
 
 void SysTick_Handler(void) {
     MAP_GPIO_toggleOutputOnPin( GPIO_PORT_P1, GPIO_PIN0 );
-    MAP_SysTick_setPeriod( SystemCoreClock-1 );
 }
 ////////////////////////////////////////////////////////////////////////////////
