@@ -31,7 +31,8 @@ void GPIO_init() {
 
     // Push button pin (P1.1)
     MAP_GPIO_setAsInputPinWithPullUpResistor( GPIO_PORT_P1, GPIO_PIN1 );
-    MAP_GPIO_interruptEdgeSelect( GPIO_PORT_P1, GPIO_PIN1, GPIO_HIGH_TO_LOW_TRANSITION );    
+    MAP_GPIO_interruptEdgeSelect( GPIO_PORT_P1, GPIO_PIN1, GPIO_HIGH_TO_LOW_TRANSITION );
+    MAP_Interrupt_setPriority( GPIO_PORT_P1, 2 << 5 );
     MAP_Timer32_registerInterrupt ( GPIO_PORT_P1, PORT1_IRQHandler ); // register ISR
     MAP_GPIO_clearInterruptFlag( GPIO_PORT_P1, GPIO_PIN1 ); // clear Por1 interrupt flag
     MAP_GPIO_enableInterrupt( GPIO_PORT_P1, GPIO_PIN1 );    // enable interrupt on P1.1 pin
@@ -53,7 +54,10 @@ void Timer32_init() {
        TIMER32_32BIT,           // use 16-bit or 32-bit mode: 32-bit
        TIMER32_FREE_RUN_MODE    // use free-running or periodic mode: free-running
     );
+
     MAP_Timer32_setCount ( TIMER32_0_BASE, PERIOD_CYCLES );
+    // Upper 3 bits control hardware priority, lower 7 bits control sub-priority
+    MAP_Interrupt_setPriority( INT_T32_INT1, 3 << 5 );
     MAP_Interrupt_enableInterrupt( INT_T32_INT1 ); // enable TM32_INT1 (Timer32 module 0) in NVIC
     MAP_Timer32_enableInterrupt( TIMER32_0_BASE ); // enable interrupt for Timer32 module 0
     MAP_Timer32_registerInterrupt ( TIMER32_0_INTERRUPT, T32_INT1_IRQHandler); // register ISR
