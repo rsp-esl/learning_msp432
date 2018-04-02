@@ -31,6 +31,7 @@ void GPIO_init() {
 
     // Push button pin (P1.1)
     MAP_GPIO_setAsInputPinWithPullUpResistor( GPIO_PORT_P1, GPIO_PIN1 );
+    MAP_GPIO_interruptEdgeSelect( GPIO_PORT_P1, GPIO_PIN1, GPIO_HIGH_TO_LOW_TRANSITION );    
     MAP_Timer32_registerInterrupt ( GPIO_PORT_P1, PORT1_IRQHandler ); // register ISR
     MAP_GPIO_clearInterruptFlag( GPIO_PORT_P1, GPIO_PIN1 ); // clear Por1 interrupt flag
     MAP_GPIO_enableInterrupt( GPIO_PORT_P1, GPIO_PIN1 );    // enable interrupt on P1.1 pin
