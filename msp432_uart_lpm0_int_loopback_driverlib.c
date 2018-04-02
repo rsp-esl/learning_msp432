@@ -11,7 +11,8 @@
 #include <string.h>
 
 #define EUSCI_A_MODULE  EUSCI_A0_BASE
-#define BUF_SIZE    (128 )
+#define BUF_SIZE       (128 )
+
 volatile uint8_t flags  = 0;
 volatile bool line_complete = false;
 volatile uint8_t buf_index = 0;
