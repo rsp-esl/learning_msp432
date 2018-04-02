@@ -32,7 +32,7 @@ int main(void) {
     SysTick_init();
     MAP_Interrupt_enableMaster();     // enable the global interrupt
 
-    //MAP_PCM_gotoLPM0();               // enter low-power mode (LPM0)
+    MAP_PCM_gotoLPM0();               // enter low-power mode (LPM0)
 
     while (1) {
           MAP_GPIO_toggleOutputOnPin( GPIO_PORT_P2, GPIO_PIN0 );
