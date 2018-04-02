@@ -20,7 +20,7 @@ void GPIO_init() {
 void SysTick_init() {
     // Assume 12 MHz System Core Clock
     MAP_SysTick_enableModule();
-    MAP_SysTick_setPeriod( SystemCoreClock-1 ); // set 24-bit value (max. value = 2^24-1)
+    MAP_SysTick_setPeriod( SystemCoreClock/2-1 ); // set 24-bit value (max. value = 2^24-1)
     MAP_Interrupt_enableSleepOnIsrExit();
     MAP_SysTick_enableInterrupt();
 }
