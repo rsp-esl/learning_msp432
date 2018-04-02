@@ -62,6 +62,7 @@ void Timer32_init() {
 
 int main(void) {
     MAP_WDT_A_holdTimer();        // stop WDT (watchdog timer)
+    Interrupt_disableMaster();    // disable the global interrupt
     GPIO_init();                  // initialize the GPIO (LED pin)
     Timer32_init();               // initialize Timer32 module 0
     MAP_Interrupt_enableMaster(); // enable the global interrupt
