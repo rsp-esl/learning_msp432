@@ -14,8 +14,7 @@
 #define SCL_PIN     GPIO_PIN5  // P6.5
 #define SDA_PIN     GPIO_PIN4  // P6.4
 
-
-#define I2C_SLAVE_ADDR   (0x38)
+#define I2C_SLAVE_ADDR   (0x38)  // PCF8574A address (default)
 
 void LED_init( ) {
     MAP_GPIO_setAsOutputPin( GPIO_PORT_P1, GPIO_PIN0 );
@@ -38,21 +37,15 @@ void I2C1_init() { // use EUSCI_B1
 
     MAP_I2C_initMaster( EUSCI_B1_BASE, &i2cConfig );
     MAP_I2C_enableModule( EUSCI_B1_BASE );
-
-    //MAP_I2C_clearInterruptFlag( EUSCI_B1_BASE, EUSCI_B_I2C_RECEIVE_INTERRUPT1 | EUSCI_B_I2C_TRANSMIT_INTERRUPT1 );
-    //MAP_Interrupt_enableInterrupt( INT_EUSCIB1 );
 }
 
 int main(void) {
     uint8_t wdata = 0xFE;
     uint8_t rdata;
 
-    //MAP_Interrupt_disableMaster();
     MAP_WDT_A_holdTimer();
     LED_init();
     I2C1_init();
-    //MAP_Interrupt_enableMaster();
-
 
     while(1)  {
         while ( MAP_I2C_isBusBusy(EUSCI_B1_BASE) );
