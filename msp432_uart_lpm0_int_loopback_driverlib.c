@@ -47,7 +47,7 @@ void GPIO_init() {
     // Selecting P1.2 and P1.3 in UART mode
     MAP_GPIO_setAsPeripheralModuleFunctionInputPin( GPIO_PORT_P1,
              GPIO_PIN2 | GPIO_PIN3, GPIO_PRIMARY_MODULE_FUNCTION );
-    // P1.1 (LED pin) as output
+    // P1.0 (LED pin) as output
     MAP_GPIO_setAsOutputPin( GPIO_PORT_P1, GPIO_PIN0 );
     MAP_GPIO_setOutputLowOnPin( GPIO_PORT_P1, GPIO_PIN0 );
 }
