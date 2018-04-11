@@ -1,3 +1,8 @@
+////////////////////////////////////////////////////////////////////////////////
+// Date: 2018-04-11
+// Author: RSP (IoT Engineering Education @ KMUTNB)
+// MCU Board: MSP432P401R LaunchPad
+////////////////////////////////////////////////////////////////////////////////
 
 #include <ti/devices/msp432p4xx/driverlib/driverlib.h>
 
@@ -59,6 +64,8 @@ void LED_init( ) { // configure P1.0 (LED) as output
 
 ///////////////////////////////////////////////////////////////////////////////
 
+#define TIMEOUT  48000
+
 void I2C1_init() { // use EUSCI_B1
 
     eUSCI_I2C_MasterConfig i2cConfig = {
@@ -73,61 +80,107 @@ void I2C1_init() { // use EUSCI_B1
     MAP_GPIO_setAsPeripheralModuleFunctionInputPin(
             GPIO_PORT_P6, SCL_PIN | SDA_PIN, GPIO_PRIMARY_MODULE_FUNCTION );
 
+    MAP_I2C_disableModule( EUSCI_I2C );
     MAP_Interrupt_disableInterrupt( INT_EUSCIB1 ); // disable eUSCI_B1 interrupt
     MAP_I2C_initMaster( EUSCI_I2C, &i2cConfig );
     MAP_I2C_enableModule( EUSCI_I2C );
+
+    MAP_I2C_setSlaveAddress( EUSCI_B1_BASE, I2C_ADDR ); // set slave address
 }
 
-void I2C1_write( uint8_t addr, const uint8_t *data, uint32_t len ) {
-    int i;
+int I2C1_write( const uint8_t *data, uint32_t len ) {
+    int i, status=0;
 
-    MAP_I2C_setMode( EUSCI_B1_BASE, EUSCI_B_I2C_TRANSMIT_MODE );
-    MAP_I2C_setSlaveAddress( EUSCI_B1_BASE, addr );
-    while ( MAP_I2C_isBusBusy( EUSCI_I2C ) == EUSCI_B_I2C_BUS_BUSY );
+    //MAP_I2C_setMode( EUSCI_B1_BASE, EUSCI_B_I2C_TRANSMIT_MODE );
+    if ( len==1 ) {
+        if ( !MAP_I2C_masterSendSingleByteWithTimeout( EUSCI_I2C, data[0], TIMEOUT ) ) {
+            status = -1;
+            return status;
+        }
+        return status;
+    }
 
     for ( i=0; i < len; i++ ) {
         if ( i==0 ) { // send START condition and transmit the first byte
-            MAP_I2C_masterSendMultiByteStart( EUSCI_I2C, data[i] );
+            if ( !MAP_I2C_masterSendMultiByteStartWithTimeout( EUSCI_I2C, data[i], TIMEOUT ) ) {
+                status = -1;
+                break;
+            }
         }
         else if (i==(len-1)) { // send the last byte and send STOP condition
-            MAP_I2C_masterSendMultiByteFinish( EUSCI_I2C, data[i] );
-        } else {
-            MAP_I2C_masterSendMultiByteNext( EUSCI_I2C, data[i] );
+            if ( !MAP_I2C_masterSendMultiByteFinishWithTimeout( EUSCI_I2C, data[i], TIMEOUT ) ) {
+                status = -3;
+                break;
+            }
+        }
+        else {
+            if ( !MAP_I2C_masterSendMultiByteNextWithTimeout( EUSCI_I2C, data[i], TIMEOUT ) ) {
+                status = -2;
+                break;
+            }
         }
     }
+    return status;
 }
 
-void I2C1_read( uint8_t addr, uint8_t *data, uint32_t len ) {
+int I2C1_read( uint8_t *data, uint32_t len ) {
     int i;
+    uint32_t cnt;
 
-    MAP_I2C_setSlaveAddress( EUSCI_I2C, addr );
-    MAP_I2C_setMode( EUSCI_I2C, EUSCI_B_I2C_RECEIVE_MODE );
-    while ( MAP_I2C_isBusBusy( EUSCI_I2C ) == EUSCI_B_I2C_BUS_BUSY );
-
+    //MAP_I2C_setMode( EUSCI_I2C, EUSCI_B_I2C_RECEIVE_MODE );
     MAP_I2C_masterReceiveStart( EUSCI_I2C ); // send START condition
     for ( i=0; i < len; i++ ) {
         if ( i==(len-1)) { // send STOP condition before reading the last byte
             MAP_I2C_masterReceiveMultiByteStop( EUSCI_I2C );
         }
         // poll for I2C RX interrupt flag
-        while ( !(EUSCI_B_CMSIS(EUSCI_I2C)->IFG & EUSCI_B_IFG_RXIFG) );
+        cnt = TIMEOUT;
+        while ( !(EUSCI_B_CMSIS(EUSCI_I2C)->IFG & EUSCI_B_IFG_RXIFG) ) {
+            cnt--;
+            if ( cnt == 0 ) {
+                MAP_I2C_masterReceiveMultiByteStop( EUSCI_I2C );
+                return -1;
+            }
+        }
         data[i] = MAP_I2C_masterReceiveMultiByteNext( EUSCI_I2C );
     }
+    while ( MAP_I2C_masterIsStopSent(EUSCI_I2C) == EUSCI_B_I2C_SENDING_STOP ) ;
+    return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
 void SI7021_reset() { // soft reset
     uint8_t cmd, data = 0x00;
+    int status;
+
+    while ( MAP_I2C_isBusBusy( EUSCI_I2C ) == EUSCI_B_I2C_BUS_BUSY );
 
     cmd = SI7021_RESET_CMD;
-    I2C1_write( I2C_ADDR, &cmd, 1 );
-    __delay_cycles( 2400000 );
+    status = I2C1_write( &cmd, 1 );
+    if ( status != 0 ) {
+       sprintf( sbuf, "SI7021_reset(): i2c write timeout (%d)\r\n", status );
+       UART_sendString( sbuf );
+       return;
+    }
+    __delay_cycles( 1200000 );
 
     cmd = SI7021_READ_USER_REG;
-    I2C1_write( I2C_ADDR, &cmd, 1 );
-    __delay_cycles( 240000 );
-    I2C1_read( I2C_ADDR, &data, 1 ); // dummy read user register
+    status = I2C1_write( &cmd, 1 );
+    if (status != 0 ) {
+       sprintf( sbuf, "SI7021_reset(): i2c write timeout (%d)\r\n", status );
+       UART_sendString( sbuf );
+       return;
+    }
+
+    __delay_cycles( 4800 );
+
+    status = I2C1_read( &data, 1 ); // dummy read user register
+    if ( status != 0 ) {
+       sprintf( sbuf, "SI7021_reset(): i2c read timeout (%d)\r\n", status );
+       UART_sendString( sbuf );
+       return;
+    }
 }
 
 uint8_t SI7021_CRC8( const uint8_t *data, uint8_t len ) {
@@ -150,12 +203,27 @@ uint16_t SI7021_readRaw( uint8_t cmd ) {
     static uint8_t buf[3];
     uint8_t crc;
     uint16_t value;
+    int status;
 
-    I2C1_write( I2C_ADDR, &cmd, 1 );
+    while ( MAP_I2C_isBusBusy( EUSCI_I2C ) == EUSCI_B_I2C_BUS_BUSY );
+
+    status = I2C1_write( &cmd, 1 );
+    if ( status ) {
+        sprintf( sbuf, "SI7021_readRaw(): i2c write timeout (%d)\r\n", status );
+        UART_sendString( sbuf );
+        return 0;
+    }
+
     __delay_cycles( 2400000 ); // wait at least 25 msec
 
     memset( buf, 0x00, 3 );
-    I2C1_read( I2C_ADDR, buf, 3 ); // read 3 bytes from the I2C device
+    status = I2C1_read( buf, 3 ); // read 3 bytes from the I2C device
+    if ( status ) {
+        sprintf( sbuf, "SI7021_readRaw(): i2c read timeout (%d)\r\n", status );
+        UART_sendString( sbuf );
+        return 0;
+    }
+
     crc = SI7021_CRC8( buf, 2 );
     if ( crc != buf[2] ) { // CRC error
        UART_sendString( "CRC8 failed\r\n" );
@@ -202,10 +270,10 @@ int main(void) {
     UART_init();
     I2C1_init();
 
-    SI7021_reset();
-
     UART_sendString( "\r\n\r\n" );
     UART_sendString( "MSP432 LaunchPad: Si7021 Sensor Reading....\r\n" );
+
+    SI7021_reset();
 
     while(1)  {
         SI7021_readTempRH();
@@ -214,4 +282,3 @@ int main(void) {
     }
 }
 ///////////////////////////////////////////////////////////////////////////////
-
